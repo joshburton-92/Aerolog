@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#4db8e8" />
+  <meta name="description" content="Aero Environment Logger — track temperature, humidity, and CO2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="AeroLog" />
+  <link rel="manifest" href="#" id="manifest-link" />
+  <title>AeroLog — Environment Monitor</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800&family=Orbitron:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --sky-top: #b8e4f9;
+      --sky-mid: #d6f0fb;
+      --sky-bot: #e8f8ff;
+      --glass-bg: rgba(255,255,255,0.38);
+      --glass-border: rgba(255,255,255,0.72);
+      --glass-shadow: rgba(80,160,220,0.18);
+      --accent-blue: #2196f3;
+      --accent-teal: #00bcd4;
+      --accent-green: #4caf50;
+      --accent-glow: rgba(33,150,243,0.35);
+      --text-dark: #1a3a5c;
+      --text-mid: #2e6090;
+      --text-light: #5a8ab0;
+      --bubble: rgba(255,255,255,0.55);
+      --row-even: rgba(255,255,255,0.45);
+      --row-odd: rgba(210,240,255,0.32);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(160deg, #5bc8ef 0%, #a8dff5 30%, #cdf0ff 60%, #e2f8ff 100%);
+      color: var(--text-dark);
+      overflow-x: hidden;
+    }
+
+    /* Animated sky bubbles */
+    .bubbles {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    .bubble {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.85), rgba(200,235,255,0.25));
+      border: 1px solid rgba(255,255,255,0.6);
+      animation: floatUp linear infinite;
+    }
+    .bubble:nth-child(1)  { width:60px; height:60px; left:8%;  animation-duration:18s; animation-delay:0s;   }
+    .bubble:nth-child(2)  { width:30px; height:30px; left:20%; animation-duration:22s; animation-delay:3s;   }
+    .bubble:nth-child(3)  { width:90px; height:90px; left:38%; animation-duration:26s; animation-delay:6s;   }
+    .bubble:nth-child(4)  { width:45px; height:45px; left:55%; animation-duration:20s; animation-delay:1s;   }
+    .bubble:nth-child(5)  { width:70px; height:70px; left:72%; animation-duration:24s; animation-delay:8s;   }
+    .bubble:nth-child(6)  { width:25px; height:25px; left:85%; animation-duration:16s; animation-delay:4s;   }
+    .bubble:nth-child(7)  { width:55px; height:55px; left:62%; animation-duration:30s; animation-delay:12s;  }
+    .bubble:nth-child(8)  { width:40px; height:40px; left:15%; animation-duration:19s; animation-delay:9s;   }
+
+    @keyframes floatUp {
+      0%   { transform: translateY(110vh) scale(0.8); opacity:0; }
+      10%  { opacity:0.7; }
+      90%  { opacity:0.5; }
+      100% { transform: translateY(-15vh) scale(1.1); opacity:0; }
+    }
+
+    /* Lens flare orbs */
+    .orb {
+      position: fixed; border-radius: 50%; pointer-events: none; z-index: 0;
+      filter: blur(60px); opacity: 0.35;
+    }
+    .orb-1 { width:400px; height:400px; background:#a0d8ef; top:-80px; left:-100px; }
+    .orb-2 { width:350px; height:350px; background:#c8eefc; bottom:-60px; right:-60px; }
+    .orb-3 { width:200px; height:200px; background:#b2dfdb; top:40%; left:60%; }
+
+    /* Layout */
+    .container {
+      position: relative; z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+      animation: fadeDown 0.8s ease both;
+    }
+    .logo-row {
+      display: flex; align-items: center; justify-content: center; gap: 14px;
+      margin-bottom: 6px;
+    }
+    .logo-icon {
+      width: 52px; height: 52px;
+      background: linear-gradient(135deg, #63d4f5, #2196f3 60%, #00897b);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(33,150,243,0.45), inset 0 1px 0 rgba(255,255,255,0.5);
+      font-size: 26px;
+    }
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, #0d47a1, #00bcd4 60%, #26c6da);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: 0.04em;
+      text-shadow: none;
+      filter: drop-shadow(0 2px 8px rgba(33,150,243,0.3));
+    }
+    .subtitle {
+      font-size: 0.95rem; color: var(--text-mid); font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.8;
+    }
+
+    /* Glass card */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(18px) saturate(1.6);
+      -webkit-backdrop-filter: blur(18px) saturate(1.6);
+      border: 1.5px solid var(--glass-border);
+      border-radius: 24px;
+      box-shadow: 0 8px 40px var(--glass-shadow), 0 1.5px 0 rgba(255,255,255,0.7) inset;
+      padding: 32px 30px;
+      margin-bottom: 28px;
+    }
+
+    /* Form */
+    .form-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.78rem; font-weight: 600;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--text-mid); margin-bottom: 22px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .form-title::before {
+      content: ''; display: inline-block;
+      width: 18px; height: 3px; border-radius: 2px;
+      background: linear-gradient(90deg, #2196f3, #00bcd4);
+    }
+
+    .fields-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+
+    .field-group { display: flex; flex-direction: column; gap: 8px; }
+
+    label {
+      font-size: 0.78rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--text-mid);
+      display: flex; align-items: center; gap: 6px;
+    }
+    label .unit {
+      font-size: 0.68rem; font-weight: 600;
+      background: rgba(33,150,243,0.12);
+      color: var(--accent-blue);
+      border-radius: 6px; padding: 1px 6px;
+      letter-spacing: 0.04em;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 13px 16px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 1.1rem; font-weight: 600;
+      color: var(--text-dark);
+      background: rgba(255,255,255,0.65);
+      border: 1.5px solid rgba(255,255,255,0.85);
+      border-radius: 14px;
+      outline: none;
+      transition: all 0.25s ease;
+      box-shadow: 0 2px 12px rgba(80,160,220,0.1), inset 0 1px 3px rgba(255,255,255,0.8);
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type="number"]:focus {
+      border-color: rgba(33,150,243,0.6);
+      background: rgba(255,255,255,0.88);
+      box-shadow: 0 0 0 4px rgba(33,150,243,0.15), 0 2px 12px rgba(80,160,220,0.15);
+    }
+    input[type="number"]::placeholder { color: #a0c0d8; font-weight: 400; }
+
+    .btn-row {
+      display: flex; gap: 14px; flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 13px 28px;
+      border: none; border-radius: 50px; cursor: pointer;
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.95rem; font-weight: 800;
+      letter-spacing: 0.04em;
+      transition: all 0.2s ease;
+      position: relative; overflow: hidden;
+    }
+    .btn::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 60%);
+      border-radius: inherit; pointer-events: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #29b6f6, #1976d2 60%, #0d47a1);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(33,150,243,0.45), 0 1px 0 rgba(255,255,255,0.25) inset;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(33,150,243,0.55);
+    }
+    .btn-primary:active { transform: translateY(0); }
+
+    .btn-export {
+      background: linear-gradient(135deg, #66bb6a, #2e7d32);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(76,175,80,0.35), 0 1px 0 rgba(255,255,255,0.2) inset;
+    }
+    .btn-export:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(76,175,80,0.45);
+    }
+
+    .btn-clear {
+      background: rgba(255,255,255,0.5);
+      color: var(--text-mid);
+      border: 1.5px solid rgba(255,255,255,0.8);
+      box-shadow: 0 2px 10px rgba(80,160,220,0.1);
+    }
+    .btn-clear:hover {
+      background: rgba(255,255,255,0.75);
+      transform: translateY(-1px);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: rgba(30,80,140,0.92);
+      backdrop-filter: blur(12px);
+      color: #fff; padding: 12px 28px;
+      border-radius: 50px; font-weight: 700; font-size: 0.9rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+      z-index: 999; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), opacity 0.3s;
+      opacity: 0; pointer-events: none;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Table section */
+    .table-header-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 18px; flex-wrap: wrap; gap: 12px;
+    }
+    .record-count {
+      font-size: 0.8rem; font-weight: 700;
+      color: var(--text-light); letter-spacing: 0.06em;
+      background: rgba(33,150,243,0.1);
+      border: 1px solid rgba(33,150,243,0.2);
+      border-radius: 50px; padding: 4px 14px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.7);
+    }
+
+    table {
+      width: 100%; border-collapse: collapse; min-width: 560px;
+    }
+    thead tr {
+      background: linear-gradient(90deg, rgba(33,150,243,0.18), rgba(0,188,212,0.12));
+    }
+    th {
+      padding: 13px 16px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65rem; font-weight: 600;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--text-mid);
+      text-align: left;
+      white-space: nowrap;
+      border-bottom: 1px solid rgba(255,255,255,0.5);
+    }
+    tbody tr {
+      transition: background 0.2s;
+      animation: rowSlide 0.4s ease both;
+    }
+    tbody tr:nth-child(odd)  { background: var(--row-odd); }
+    tbody tr:nth-child(even) { background: var(--row-even); }
+    tbody tr:hover { background: rgba(173,216,255,0.45); }
+
+    td {
+      padding: 12px 16px;
+      font-size: 0.95rem; font-weight: 600;
+      color: var(--text-dark);
+      border-bottom: 1px solid rgba(255,255,255,0.4);
+    }
+    td.date-cell { font-size: 0.82rem; color: var(--text-light); font-weight: 700; }
+    td.val-temp  { color: #e53935; }
+    td.val-hum   { color: #1565c0; }
+    td.val-co2   { color: #2e7d32; }
+
+    .badge {
+      display: inline-block; padding: 2px 10px; border-radius: 50px;
+      font-size: 0.88rem; font-weight: 700;
+    }
+    .badge-temp { background: rgba(229,57,53,0.12); }
+    .badge-hum  { background: rgba(21,101,192,0.12); }
+    .badge-co2  { background: rgba(46,125,50,0.12); }
+
+    .delete-btn {
+      background: none; border: none; cursor: pointer;
+      color: rgba(180,80,80,0.5); font-size: 1rem;
+      padding: 4px 8px; border-radius: 8px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .delete-btn:hover { color: #e53935; background: rgba(229,57,53,0.1); }
+
+    .empty-state {
+      text-align: center; padding: 48px 20px;
+      color: var(--text-light);
+    }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+    .empty-state p { font-size: 0.9rem; font-weight: 600; opacity: 0.7; }
+
+    @keyframes rowSlide {
+      from { opacity:0; transform: translateX(-12px); }
+      to   { opacity:1; transform: translateX(0); }
+    }
+    @keyframes fadeDown {
+      from { opacity:0; transform: translateY(-20px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+
+    /* Responsive */
+    @media (max-width: 500px) {
+      .glass-card { padding: 22px 16px; }
+      .btn { padding: 12px 20px; font-size: 0.88rem; }
+    }
+
+    /* PWA install prompt */
+    .install-banner {
+      display: none; align-items: center; gap: 12px;
+      background: rgba(255,255,255,0.5);
+      border: 1.5px solid rgba(255,255,255,0.8);
+      border-radius: 16px; padding: 14px 18px;
+      margin-bottom: 22px;
+      animation: fadeDown 0.6s ease both;
+    }
+    .install-banner.visible { display: flex; }
+    .install-banner p { flex: 1; font-size: 0.88rem; font-weight: 600; color: var(--text-mid); }
+    .install-banner .btn { padding: 8px 18px; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+
+<div class="bubbles">
+  <div class="bubble"></div><div class="bubble"></div><div class="bubble"></div>
+  <div class="bubble"></div><div class="bubble"></div><div class="bubble"></div>
+  <div class="bubble"></div><div class="bubble"></div>
+</div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div class="container">
+  <header>
+    <div class="logo-row">
+      <div class="logo-icon">🌡️</div>
+      <h1>AeroLog</h1>
+    </div>
+    <p class="subtitle">Environment Monitoring Station</p>
+  </header>
+
+  <!-- PWA Install banner -->
+  <div class="install-banner" id="installBanner">
+    <span>📲</span>
+    <p>Add AeroLog to your home screen for offline access.</p>
+    <button class="btn btn-primary" id="installBtn">Install</button>
+    <button class="btn btn-clear" id="dismissBanner">✕</button>
+  </div>
+
+  <!-- Entry Form -->
+  <div class="glass-card" style="animation: fadeDown 0.7s 0.1s ease both; opacity:0;">
+    <div class="form-title">New Reading</div>
+    <div class="fields-row">
+      <div class="field-group">
+        <label>Temperature <span class="unit">°C</span></label>
+        <input type="number" id="temp" placeholder="e.g. 22.5" step="0.1" />
+      </div>
+      <div class="field-group">
+        <label>Humidity <span class="unit">%</span></label>
+        <input type="number" id="hum" placeholder="e.g. 58" step="0.1" min="0" max="100" />
+      </div>
+      <div class="field-group">
+        <label>CO₂ <span class="unit">ppm</span></label>
+        <input type="number" id="co2" placeholder="e.g. 412" step="1" min="0" />
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="addRow()">＋ Log Reading</button>
+      <button class="btn btn-export" onclick="exportXLSX()">⬇ Export .xlsx</button>
+      <button class="btn btn-clear" onclick="clearAll()">🗑 Clear All</button>
+    </div>
+  </div>
+
+  <!-- Data Table -->
+  <div class="glass-card" style="animation: fadeDown 0.7s 0.25s ease both; opacity:0;">
+    <div class="table-header-row">
+      <div class="form-title" style="margin-bottom:0">Readings Log</div>
+      <span class="record-count" id="countLabel">0 records</span>
+    </div>
+
+    <div class="table-wrap">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Temp (°C)</th>
+            <th>Humidity (%)</th>
+            <th>CO₂ (ppm)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <!-- Rows injected here -->
+        </tbody>
+      </table>
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">🌤️</div>
+        <p>No readings yet — log your first measurement above.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── Storage key
+  const STORE_KEY = 'aerolog_readings';
+
+  // ── State
+  let rows = [];
+
+  function load() {
+    try {
+      const saved = localStorage.getItem(STORE_KEY);
+      rows = saved ? JSON.parse(saved) : [];
+    } catch { rows = []; }
+    renderTable();
+  }
+
+  function save() {
+    localStorage.setItem(STORE_KEY, JSON.stringify(rows));
+  }
+
+  // ── Add row
+  function addRow() {
+    const tempVal = document.getElementById('temp').value.trim();
+    const humVal  = document.getElementById('hum').value.trim();
+    const co2Val  = document.getElementById('co2').value.trim();
+
+    if (tempVal === '' || humVal === '' || co2Val === '') {
+      showToast('⚠️ Please fill in all three fields.');
+      return;
+    }
+
+    const now = new Date();
+    const entry = {
+      id: Date.now(),
+      date: now.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }),
+      time: now.toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit', second:'2-digit' }),
+      temp: parseFloat(tempVal),
+      hum:  parseFloat(humVal),
+      co2:  parseInt(co2Val, 10),
+    };
+
+    rows.unshift(entry);
+    save();
+    renderTable();
+    clearInputs();
+    showToast('✅ Reading logged!');
+  }
+
+  // ── Delete row
+  function deleteRow(id) {
+    rows = rows.filter(r => r.id !== id);
+    save();
+    renderTable();
+    showToast('🗑 Reading deleted.');
+  }
+
+  // ── Clear all
+  function clearAll() {
+    if (rows.length === 0) return;
+    if (!confirm('Delete all readings? This cannot be undone.')) return;
+    rows = [];
+    save();
+    renderTable();
+    showToast('🗑 All readings cleared.');
+  }
+
+  // ── Render
+  function renderTable() {
+    const tbody = document.getElementById('tableBody');
+    const empty = document.getElementById('emptyState');
+    const count = document.getElementById('countLabel');
+
+    count.textContent = `${rows.length} record${rows.length !== 1 ? 's' : ''}`;
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = rows.map((r, i) => `
+      <tr>
+        <td style="color:var(--text-light);font-size:0.8rem;">${rows.length - i}</td>
+        <td class="date-cell">${r.date}</td>
+        <td class="date-cell">${r.time}</td>
+        <td class="val-temp"><span class="badge badge-temp">${r.temp.toFixed(1)}</span></td>
+        <td class="val-hum"><span class="badge badge-hum">${r.hum.toFixed(1)}</span></td>
+        <td class="val-co2"><span class="badge badge-co2">${r.co2}</span></td>
+        <td><button class="delete-btn" onclick="deleteRow(${r.id})" title="Delete">✕</button></td>
+      </tr>
+    `).join('');
+  }
+
+  function clearInputs() {
+    ['temp','hum','co2'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('temp').focus();
+  }
+
+  // ── Export XLSX
+  function exportXLSX() {
+    if (rows.length === 0) { showToast('⚠️ Nothing to export yet.'); return; }
+
+    const data = [['#','Date','Time','Temperature (°C)','Humidity (%)','CO2 (ppm)']];
+    rows.forEach((r, i) => {
+      data.push([rows.length - i, r.date, r.time, r.temp, r.hum, r.co2]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // Column widths
+    ws['!cols'] = [
+      {wch:4},{wch:14},{wch:10},{wch:18},{wch:14},{wch:12}
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Readings');
+
+    const ts = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `aerolog_${ts}.xlsx`);
+    showToast('📊 Exported successfully!');
+  }
+
+  // ── Toast
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  // ── Allow Enter key to submit
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && ['temp','hum','co2'].includes(e.target.id)) addRow();
+  });
+
+  // ── PWA: Service Worker inline
+  const SW_CODE = `
+const CACHE = 'aerolog-v1';
+const ASSETS = ['/'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  self.skipWaiting();
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys =>
+    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+  ));
+  self.clients.claim();
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('/')))
+  );
+});
+`;
+
+  if ('serviceWorker' in navigator) {
+    const blob = new Blob([SW_CODE], { type: 'application/javascript' });
+    const swUrl = URL.createObjectURL(blob);
+    navigator.serviceWorker.register(swUrl, { scope: '/' }).catch(() => {});
+  }
+
+  // ── PWA: Inline manifest
+  const manifest = {
+    name: 'AeroLog — Environment Monitor',
+    short_name: 'AeroLog',
+    description: 'Log temperature, humidity, and CO2 readings.',
+    start_url: '.',
+    display: 'standalone',
+    background_color: '#b8e4f9',
+    theme_color: '#4db8e8',
+    icons: [
+      { src: 'https://via.placeholder.com/192/4db8e8/ffffff?text=AL', sizes: '192x192', type: 'image/png' },
+      { src: 'https://via.placeholder.com/512/4db8e8/ffffff?text=AL', sizes: '512x512', type: 'image/png' }
+    ]
+  };
+  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  document.getElementById('manifest-link').href = URL.createObjectURL(manifestBlob);
+
+  // ── PWA Install prompt
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('installBanner').classList.add('visible');
+  });
+  document.getElementById('installBtn').addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    document.getElementById('installBanner').classList.remove('visible');
+  });
+  document.getElementById('dismissBanner').addEventListener('click', () => {
+    document.getElementById('installBanner').classList.remove('visible');
+  });
+
+  // ── Init
+  load();
+</script>
+</body>
+</html>
